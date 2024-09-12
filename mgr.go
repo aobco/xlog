@@ -34,10 +34,10 @@ func atExit(l *logger) {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigCh
-		l.Infof("Received signal:", sig)
+		Infof("Received signal:", sig)
 		buf := make([]byte, 4096)
 		n := runtime.Stack(buf, false)
-		l.Infof("=== Stack Trace ===\n%s", string(buf[:n]))
-		l.Flush()
+		Infof("=== Stack Trace ===\n%s", string(buf[:n]))
+		Flush()
 	}()
 }

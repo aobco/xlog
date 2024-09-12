@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+var LOGGER *logger
+
 type logger struct {
 	logFile  string
 	logLevel LoggerLevel
@@ -34,15 +36,15 @@ type logger struct {
 }
 
 func Init(logFile string) *logger {
-	l := &logger{
+	LOGGER = &logger{
 		logFile:  logFile,
 		rotateNo: 100,
 		logChan:  make(chan string, 10240),
 		done:     make(chan interface{}),
 	}
-	go l.sink()
-	atExit(l)
-	return l
+	go LOGGER.sink()
+	atExit(LOGGER)
+	return LOGGER
 }
 
 func (l *logger) sink() {
@@ -146,11 +148,11 @@ func (l *logger) Compress(compress bool) *logger {
 	return l
 }
 
-func (l *logger) Flush() {
-	l.once.Do(func() {
-		close(l.logChan)
-		<-l.done
-		l.closeFile()
+func Flush() {
+	LOGGER.once.Do(func() {
+		close(LOGGER.logChan)
+		<-LOGGER.done
+		LOGGER.closeFile()
 	})
 }
 
@@ -270,8 +272,8 @@ func (l *logger) refreshLastTime() {
 	}
 }
 
-func (l *logger) Tracef(format string, args ...interface{}) {
-	if l.logLevel > TRACE {
+func Tracef(format string, args ...interface{}) {
+	if LOGGER.logLevel > TRACE {
 		return
 	}
 	log := fmt.Sprintf(format, args...)
@@ -286,11 +288,11 @@ func (l *logger) Tracef(format string, args ...interface{}) {
 	buf.AppendByte('\n')
 	log = buf.String()
 	buf.Free()
-	l.logChan <- log
+	LOGGER.logChan <- log
 }
 
-func (l *logger) Debugf(format string, args ...interface{}) {
-	if l.logLevel > DEBUG {
+func Debugf(format string, args ...interface{}) {
+	if LOGGER.logLevel > DEBUG {
 		return
 	}
 	log := fmt.Sprintf(format, args...)
@@ -305,11 +307,11 @@ func (l *logger) Debugf(format string, args ...interface{}) {
 	buf.AppendByte('\n')
 	log = buf.String()
 	buf.Free()
-	l.logChan <- log
+	LOGGER.logChan <- log
 }
 
-func (l *logger) Infof(format string, args ...interface{}) {
-	if l.logLevel > INFO {
+func Infof(format string, args ...interface{}) {
+	if LOGGER.logLevel > INFO {
 		return
 	}
 	log := fmt.Sprintf(format, args...)
@@ -325,11 +327,11 @@ func (l *logger) Infof(format string, args ...interface{}) {
 	buf.AppendByte('\n')
 	log = buf.String()
 	buf.Free()
-	l.logChan <- log
+	LOGGER.logChan <- log
 }
 
-func (l *logger) Warnf(format string, args ...interface{}) {
-	if l.logLevel > WARN {
+func Warnf(format string, args ...interface{}) {
+	if LOGGER.logLevel > WARN {
 		return
 	}
 	log := fmt.Sprintf(format, args...)
@@ -344,11 +346,11 @@ func (l *logger) Warnf(format string, args ...interface{}) {
 	buf.AppendByte('\n')
 	log = buf.String()
 	buf.Free()
-	l.logChan <- log
+	LOGGER.logChan <- log
 }
 
-func (l *logger) Errorf(format string, args ...interface{}) {
-	if l.logLevel > ERROR {
+func Errorf(format string, args ...interface{}) {
+	if LOGGER.logLevel > ERROR {
 		return
 	}
 	log := fmt.Sprintf(format, args...)
@@ -364,12 +366,12 @@ func (l *logger) Errorf(format string, args ...interface{}) {
 	buf.AppendString(stackTrace())
 	log = buf.String()
 	buf.Free()
-	l.logChan <- log
+	LOGGER.logChan <- log
 }
 
-func (l *logger) Panicf(format string, args ...interface{}) {
+func Panicf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	if l.logLevel <= PANIC {
+	if LOGGER.logLevel <= PANIC {
 		buf := bufferpool.Get()
 		buf.AppendString(time.Now().Format(time.RFC3339))
 		buf.AppendByte('\t')
@@ -382,13 +384,13 @@ func (l *logger) Panicf(format string, args ...interface{}) {
 		buf.AppendString(stackTrace())
 		log := buf.String()
 		buf.Free()
-		l.logChan <- log
+		LOGGER.logChan <- log
 	}
 	panic(errors.New(msg))
 }
 
-func (l *logger) Fatalf(format string, args ...interface{}) {
-	if l.logLevel > FATAL {
+func Fatalf(format string, args ...interface{}) {
+	if LOGGER.logLevel > FATAL {
 		return
 	}
 	log := fmt.Sprintf(format, args...)
@@ -404,7 +406,7 @@ func (l *logger) Fatalf(format string, args ...interface{}) {
 	buf.AppendString(stackTrace())
 	log = buf.String()
 	buf.Free()
-	l.logChan <- log
-	l.Flush()
+	LOGGER.logChan <- log
+	Flush()
 	os.Exit(1)
 }
