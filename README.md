@@ -1,2 +1,2 @@
 # xlog
-xlog
+light logger for golang
