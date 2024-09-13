@@ -17,8 +17,8 @@ func stackTrace() string {
 	return messages
 }
 
-func caller() string {
-	_, file, line, ok := runtime.Caller(2)
+func caller(skip int) string {
+	_, file, line, ok := runtime.Caller(skip)
 	if ok {
 		idx := strings.LastIndexByte(file, '/')
 		if idx == -1 {

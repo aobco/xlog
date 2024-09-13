@@ -276,7 +276,7 @@ func (l *logger) refreshLastTime() {
 }
 
 func stdoutf(lvl string, format string, args ...interface{}) {
-	fmt.Printf("%s\t%s\t%s\t%s\n", time.Now().Format(time.RFC3339), lvl, caller(), fmt.Sprintf(format, args))
+	fmt.Printf("%s\t%s\t%s\t%s\n", time.Now().Format(time.RFC3339), lvl, caller(3), fmt.Sprintf(format, args))
 }
 
 func Tracef(format string, args ...interface{}) {
@@ -293,7 +293,7 @@ func Tracef(format string, args ...interface{}) {
 	buf.AppendByte('\t')
 	buf.AppendString("TRACE")
 	buf.AppendByte('\t')
-	buf.AppendString(caller())
+	buf.AppendString(caller(2))
 	buf.AppendByte('\t')
 	buf.AppendString(log)
 	buf.AppendByte('\n')
@@ -316,7 +316,7 @@ func Debugf(format string, args ...interface{}) {
 	buf.AppendByte('\t')
 	buf.AppendString("DEBUG")
 	buf.AppendByte('\t')
-	buf.AppendString(caller())
+	buf.AppendString(caller(2))
 	buf.AppendByte('\t')
 	buf.AppendString(log)
 	buf.AppendByte('\n')
@@ -334,13 +334,13 @@ func Infof(format string, args ...interface{}) {
 		return
 	}
 	log := fmt.Sprintf(format, args...)
-	// log = fmt.Sprintf("%s\tINFO\t%s\t%s\n", time.Now().Format(time.RFC3339), caller(), log)
+	// log = fmt.Sprintf("%s\tINFO\t%s\t%s\n", time.Now().Format(time.RFC3339), caller(2), log)
 	buf := bufferpool.Get()
 	buf.AppendString(time.Now().Format(time.RFC3339))
 	buf.AppendByte('\t')
 	buf.AppendString("INFO")
 	buf.AppendByte('\t')
-	buf.AppendString(caller())
+	buf.AppendString(caller(2))
 	buf.AppendByte('\t')
 	buf.AppendString(log)
 	buf.AppendByte('\n')
@@ -363,7 +363,7 @@ func Warnf(format string, args ...interface{}) {
 	buf.AppendByte('\t')
 	buf.AppendString("WARN")
 	buf.AppendByte('\t')
-	buf.AppendString(caller())
+	buf.AppendString(caller(2))
 	buf.AppendByte('\t')
 	buf.AppendString(log)
 	buf.AppendByte('\n')
@@ -386,7 +386,7 @@ func Errorf(format string, args ...interface{}) {
 	buf.AppendByte('\t')
 	buf.AppendString("ERROR")
 	buf.AppendByte('\t')
-	buf.AppendString(caller())
+	buf.AppendString(caller(2))
 	buf.AppendByte('\t')
 	buf.AppendString(log)
 	buf.AppendByte('\n')
@@ -408,7 +408,7 @@ func Panicf(format string, args ...interface{}) {
 		buf.AppendByte('\t')
 		buf.AppendString("PANIC")
 		buf.AppendByte('\t')
-		buf.AppendString(caller())
+		buf.AppendString(caller(2))
 		buf.AppendByte('\t')
 		buf.AppendString(msg)
 		buf.AppendByte('\n')
@@ -434,7 +434,7 @@ func Fatalf(format string, args ...interface{}) {
 	buf.AppendByte('\t')
 	buf.AppendString("FATAL")
 	buf.AppendByte('\t')
-	buf.AppendString(caller())
+	buf.AppendString(caller(2))
 	buf.AppendByte('\t')
 	buf.AppendString(log)
 	buf.AppendByte('\n')
