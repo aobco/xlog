@@ -67,5 +67,5 @@ func main() {
 		}
 	}()
 	wg.Wait()
-	println("==========")
+	println("TEST DONE")
 }

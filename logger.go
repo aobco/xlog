@@ -149,6 +149,9 @@ func (l *logger) Compress(compress bool) *logger {
 }
 
 func Flush() {
+	if LOGGER == nil {
+		return
+	}
 	LOGGER.once.Do(func() {
 		close(LOGGER.logChan)
 		<-LOGGER.done
@@ -272,7 +275,15 @@ func (l *logger) refreshLastTime() {
 	}
 }
 
+func stdoutf(lvl string, format string, args ...interface{}) {
+	fmt.Printf("%s\t%s\t%s\t%s\n", time.Now().Format(time.RFC3339), lvl, caller(), fmt.Sprintf(format, args))
+}
+
 func Tracef(format string, args ...interface{}) {
+	if LOGGER == nil {
+		stdoutf("TRACE", format, args)
+		return
+	}
 	if LOGGER.logLevel > TRACE {
 		return
 	}
@@ -292,6 +303,10 @@ func Tracef(format string, args ...interface{}) {
 }
 
 func Debugf(format string, args ...interface{}) {
+	if LOGGER == nil {
+		stdoutf("DEBUG", format, args)
+		return
+	}
 	if LOGGER.logLevel > DEBUG {
 		return
 	}
@@ -311,6 +326,10 @@ func Debugf(format string, args ...interface{}) {
 }
 
 func Infof(format string, args ...interface{}) {
+	if LOGGER == nil {
+		stdoutf("INFO", format, args)
+		return
+	}
 	if LOGGER.logLevel > INFO {
 		return
 	}
@@ -331,6 +350,10 @@ func Infof(format string, args ...interface{}) {
 }
 
 func Warnf(format string, args ...interface{}) {
+	if LOGGER == nil {
+		stdoutf("WARN", format, args)
+		return
+	}
 	if LOGGER.logLevel > WARN {
 		return
 	}
@@ -350,6 +373,10 @@ func Warnf(format string, args ...interface{}) {
 }
 
 func Errorf(format string, args ...interface{}) {
+	if LOGGER == nil {
+		stdoutf("ERROR", format, args)
+		return
+	}
 	if LOGGER.logLevel > ERROR {
 		return
 	}
@@ -370,6 +397,10 @@ func Errorf(format string, args ...interface{}) {
 }
 
 func Panicf(format string, args ...interface{}) {
+	if LOGGER == nil {
+		stdoutf("PANIC", format, args)
+		return
+	}
 	msg := fmt.Sprintf(format, args...)
 	if LOGGER.logLevel <= PANIC {
 		buf := bufferpool.Get()
@@ -390,6 +421,10 @@ func Panicf(format string, args ...interface{}) {
 }
 
 func Fatalf(format string, args ...interface{}) {
+	if LOGGER == nil {
+		stdoutf("FATAL", format, args)
+		return
+	}
 	if LOGGER.logLevel > FATAL {
 		return
 	}
