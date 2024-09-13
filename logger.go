@@ -67,6 +67,7 @@ func (l *logger) sink() {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
+						ff(fmt.Sprintf("%v", r))
 						l.closeFile()
 						l.reload()
 					}
@@ -159,12 +160,18 @@ func Flush() {
 
 func (l *logger) closeFile() {
 	if l.writer != nil {
-		l.writer.Flush()
+		if err := l.writer.Flush(); err != nil {
+			ff(fmt.Sprintf("%v", err))
+		}
 		l.writer = nil
 	}
 	if l.fd != nil {
-		l.fd.Sync()
-		l.fd.Close()
+		if err := l.fd.Sync(); err != nil {
+			ff(fmt.Sprintf("%v", err))
+		}
+		if err := l.fd.Close(); err != nil {
+			ff(fmt.Sprintf("%v", err))
+		}
 		l.fd = nil
 	}
 }
@@ -198,14 +205,18 @@ func (l *logger) reload() {
 }
 
 func (l *logger) rotate(dt time.Time, seq int) {
+	ff("rotate")
 	l.closeFile()
+	ff("closed file")
 	tmpLog := fmt.Sprintf("%s.%s.%02d", l.logFile, dt.Format(Minutely), seq)
 	if err := os.Rename(l.logFile, tmpLog); err != nil {
-		fmt.Errorf("%v", err)
+		ff(fmt.Sprintf("%v", err))
 		return
 	}
+	ff("renamed")
 	for i := 0; i < 5; i++ {
 		stat, err := os.Stat(tmpLog)
+		ff(fmt.Sprintf("%v, %v", stat, err))
 		if err != nil {
 			time.Sleep(time.Second)
 			continue
@@ -215,12 +226,15 @@ func (l *logger) rotate(dt time.Time, seq int) {
 		}
 	}
 	time.Sleep(time.Second)
-	os.Remove(l.logFile)
+	if r := os.Remove(l.logFile); r != nil {
+		ff(fmt.Sprintf("%v", r))
+	}
 	fd, err := os.OpenFile(l.logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		fmt.Errorf("%v", err)
+		ff(fmt.Sprintf("%v", err))
 		return
 	}
+	ff("recreated.....")
 	l.fd = fd
 	l.writer = bufio.NewWriter(fd)
 	l.lastTime = dt
