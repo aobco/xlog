@@ -8,7 +8,6 @@ import (
 	"github.com/aobco/xlog/bufferpool"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -68,7 +67,6 @@ func (l *logger) sink() {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						fmt.Printf("logger sink panic:%v\n%s", r, string(debug.Stack()))
 						l.closeFile()
 						l.reload()
 					}
@@ -165,6 +163,7 @@ func (l *logger) closeFile() {
 		l.writer = nil
 	}
 	if l.fd != nil {
+		l.fd.Sync()
 		l.fd.Close()
 		l.fd = nil
 	}
@@ -205,7 +204,17 @@ func (l *logger) rotate(dt time.Time, seq int) {
 		fmt.Errorf("%v", err)
 		return
 	}
-
+	for i := 0; i < 5; i++ {
+		stat, err := os.Stat(tmpLog)
+		if err != nil {
+			time.Sleep(time.Second)
+			continue
+		}
+		if stat != nil {
+			break
+		}
+	}
+	time.Sleep(time.Second)
 	fd, err := os.OpenFile(l.logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		fmt.Errorf("%v", err)
