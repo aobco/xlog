@@ -215,6 +215,7 @@ func (l *logger) rotate(dt time.Time, seq int) {
 		}
 	}
 	time.Sleep(time.Second)
+	os.Remove(l.logFile)
 	fd, err := os.OpenFile(l.logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		fmt.Errorf("%v", err)
