@@ -1,7 +1,6 @@
 package xlog
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -15,7 +14,7 @@ func (l *logger) removeOlds() {
 	go func() {
 		glob, err := filepath.Glob(l.logFile + "*")
 		if err != nil {
-			fmt.Errorf("%v", err)
+			keylog("%v", err)
 			l.lastTime = time.Now()
 			l.lastSeq = 0
 			return
@@ -23,7 +22,9 @@ func (l *logger) removeOlds() {
 		if len(glob) > l.rotateNo {
 			sort.Strings(glob)
 			for i := 1; i <= len(glob)-l.rotateNo; i++ {
-				os.Remove(glob[i])
+				if err := os.Remove(glob[i]); err != nil {
+					keylog("%v", err)
+				}
 			}
 		}
 	}()
@@ -34,10 +35,10 @@ func atExit(l *logger) {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigCh
-		Infof("Received signal:", sig)
+		keylog("Received signal %s, exiting...", sig)
 		buf := make([]byte, 4096)
 		n := runtime.Stack(buf, false)
-		Infof("=== Stack Trace ===\n%s", string(buf[:n]))
+		keylog("=== Stack Trace ===\n%s", string(buf[:n]))
 		Flush()
 	}()
 }

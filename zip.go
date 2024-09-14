@@ -2,7 +2,6 @@ package xlog
 
 import (
 	"archive/zip"
-	"fmt"
 	"io"
 	"os"
 	"path"
@@ -11,20 +10,20 @@ import (
 func addFileToZip(srcFile string, zipWriter *zip.Writer) error {
 	src, err := os.Open(srcFile)
 	if err != nil {
-		fmt.Errorf("%v", err)
+		keylog("%v", err)
 		return err
 	}
 	defer src.Close()
 
 	info, err := src.Stat()
 	if err != nil {
-		fmt.Errorf("%v", err)
+		keylog("%v", err)
 		return err
 	}
 
 	header, err := zip.FileInfoHeader(info)
 	if err != nil {
-		fmt.Errorf("%v", err)
+		keylog("%v", err)
 		return err
 	}
 	header.Name = path.Base(srcFile)
@@ -35,13 +34,13 @@ func addFileToZip(srcFile string, zipWriter *zip.Writer) error {
 
 	writer, err := zipWriter.CreateHeader(header)
 	if err != nil {
-		fmt.Errorf("%v", err)
+		keylog("%v", err)
 		return err
 	}
 
 	_, err = io.Copy(writer, src)
 	if err != nil {
-		fmt.Errorf("%v", err)
+		keylog("%v", err)
 		return err
 	}
 	return nil

@@ -2,11 +2,13 @@ package main
 
 import (
 	"github.com/aobco/xlog"
+	"os"
 	"sync"
 	"time"
 )
 
 func main() {
+	os.Remove("demo/xxx.log")
 	xlog.Init("demo/xxx.log").
 		Level(xlog.TRACE).
 		Hourly().

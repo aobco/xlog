@@ -35,6 +35,11 @@ type logger struct {
 }
 
 func Init(logFile string) *logger {
+	keylog("init log %s", logFile)
+	if LOGGER != nil {
+		keylog("duplicate log init, skip...")
+		return LOGGER
+	}
 	LOGGER = &logger{
 		logFile:  logFile,
 		rotateNo: 100,
@@ -52,7 +57,7 @@ func (l *logger) sink() {
 	l.checkFile()
 	stat, err := l.fd.Stat()
 	if err != nil {
-		fmt.Errorf("%v", err)
+		keylog("%v", err)
 		return
 	}
 	l.lastSize = stat.Size()
@@ -67,16 +72,14 @@ func (l *logger) sink() {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						ff(fmt.Sprintf("%v", r))
-						l.closeFile()
+						keylog("%v", err)
 						l.reload()
 					}
 				}()
 				fmt.Print(msg)
 				n, err := l.writer.WriteString(msg)
 				if err != nil {
-					fmt.Errorf("%v", err)
-					l.closeFile()
+					keylog("write log %v", err)
 					l.reload()
 					l.writer.WriteString(msg)
 					return
@@ -89,7 +92,6 @@ func (l *logger) sink() {
 				}
 				if time.Since(lastLoad) > 10*time.Second {
 					lastLoad = time.Now()
-					l.closeFile()
 					l.reload()
 				}
 			}()
@@ -161,16 +163,16 @@ func Flush() {
 func (l *logger) closeFile() {
 	if l.writer != nil {
 		if err := l.writer.Flush(); err != nil {
-			ff(fmt.Sprintf("%v", err))
+			keylog("%v", err)
 		}
 		l.writer = nil
 	}
 	if l.fd != nil {
 		if err := l.fd.Sync(); err != nil {
-			ff(fmt.Sprintf("%v", err))
+			keylog("%v", err)
 		}
 		if err := l.fd.Close(); err != nil {
-			ff(fmt.Sprintf("%v", err))
+			keylog("%v", err)
 		}
 		l.fd = nil
 	}
@@ -195,9 +197,10 @@ func (l *logger) checkFile() bool {
 }
 
 func (l *logger) reload() {
+	l.closeFile()
 	fd, err := os.OpenFile(l.logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		fmt.Errorf("%v", err)
+		keylog("%v", err)
 		return
 	}
 	l.fd = fd
@@ -205,38 +208,34 @@ func (l *logger) reload() {
 }
 
 func (l *logger) rotate(dt time.Time, seq int) {
-	ff("rotate")
+	seq = seq % 100
 	l.closeFile()
-	ff("closed file")
 	tmpLog := fmt.Sprintf("%s.%s.%02d", l.logFile, dt.Format(Minutely), seq)
-	if err := os.Rename(l.logFile, tmpLog); err != nil {
-		ff(fmt.Sprintf("%v", err))
+	var err error
+	for i := 0; i < 5; i++ {
+		time.Sleep(time.Second)
+		if err = os.Rename(l.logFile, tmpLog); err != nil {
+			keylog("%v", err)
+			continue
+		}
+		break
+	}
+	if err != nil {
 		return
 	}
-	ff("renamed")
 	for i := 0; i < 5; i++ {
+		time.Sleep(time.Second)
 		stat, err := os.Stat(tmpLog)
-		ff(fmt.Sprintf("%v, %v", stat, err))
 		if err != nil {
-			time.Sleep(time.Second)
+			keylog("%v", err)
 			continue
 		}
 		if stat != nil {
 			break
 		}
 	}
-	time.Sleep(time.Second)
-	if r := os.Remove(l.logFile); r != nil {
-		ff(fmt.Sprintf("%v", r))
-	}
-	fd, err := os.OpenFile(l.logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		ff(fmt.Sprintf("%v", err))
-		return
-	}
-	ff("recreated.....")
-	l.fd = fd
-	l.writer = bufio.NewWriter(fd)
+	os.Remove(l.logFile)
+	l.reload()
 	l.lastTime = dt
 	l.lastSeq = seq
 	l.lastSize = 0
@@ -244,7 +243,7 @@ func (l *logger) rotate(dt time.Time, seq int) {
 		if l.compress {
 			file, err := os.Create(fmt.Sprintf("%s.%s.%02d.gz", l.logFile, dt.Format(Minutely), seq))
 			if err != nil {
-				fmt.Errorf("%v", err)
+				keylog("%v", err)
 				return
 			}
 			defer file.Close()
@@ -252,7 +251,7 @@ func (l *logger) rotate(dt time.Time, seq int) {
 			defer zipWriter.Close()
 			addFileToZip(tmpLog, zipWriter)
 			if err = os.Remove(tmpLog); err != nil {
-				fmt.Errorf("%v", err)
+				keylog("%v", err)
 				return
 			}
 		}
@@ -263,7 +262,7 @@ func (l *logger) rotate(dt time.Time, seq int) {
 func (l *logger) refreshLastTime() {
 	glob, err := filepath.Glob(l.logFile + "*")
 	if err != nil {
-		fmt.Errorf("%v", err)
+		keylog("%v", err)
 		l.lastTime = time.Now()
 		l.lastSeq = 0
 		return
@@ -278,21 +277,21 @@ func (l *logger) refreshLastTime() {
 	max = strings.TrimSuffix(max, l.logFile)
 	split := strings.Split(max, ".")
 	if len(split) < 3 {
-		fmt.Errorf("invalid compress log file name %s", max)
+		keylog("invalid compress log file name %s", max)
 		l.lastTime = time.Now()
 		l.lastSeq = 0
 		return
 	}
 	l.lastTime, err = time.Parse(Minutely, split[1])
 	if err != nil {
-		fmt.Errorf("%v", err)
+		keylog("%v", err)
 		l.lastTime = time.Now()
 		l.lastSeq = 0
 		return
 	}
 	l.lastSeq, err = strconv.Atoi(split[2])
 	if err != nil {
-		fmt.Errorf("%v", err)
+		keylog("%v", err)
 		l.lastTime = time.Now()
 		l.lastSeq = 0
 		return
@@ -305,167 +304,103 @@ func stdoutf(lvl string, format string, args ...interface{}) {
 
 func Tracef(format string, args ...interface{}) {
 	if LOGGER == nil {
-		stdoutf("TRACE", format, args)
+		stdoutf("TRACE", format, args...)
 		return
 	}
 	if LOGGER.logLevel > TRACE {
 		return
 	}
-	log := fmt.Sprintf(format, args...)
-	buf := bufferpool.Get()
-	buf.AppendString(time.Now().Format(time.RFC3339))
-	buf.AppendByte('\t')
-	buf.AppendString("TRACE")
-	buf.AppendByte('\t')
-	buf.AppendString(caller(2))
-	buf.AppendByte('\t')
-	buf.AppendString(log)
-	buf.AppendByte('\n')
-	log = buf.String()
-	buf.Free()
+	log := msg(false, "TRACE", format, args...)
 	LOGGER.logChan <- log
 }
 
 func Debugf(format string, args ...interface{}) {
 	if LOGGER == nil {
-		stdoutf("DEBUG", format, args)
+		stdoutf("DEBUG", format, args...)
 		return
 	}
 	if LOGGER.logLevel > DEBUG {
 		return
 	}
-	log := fmt.Sprintf(format, args...)
-	buf := bufferpool.Get()
-	buf.AppendString(time.Now().Format(time.RFC3339))
-	buf.AppendByte('\t')
-	buf.AppendString("DEBUG")
-	buf.AppendByte('\t')
-	buf.AppendString(caller(2))
-	buf.AppendByte('\t')
-	buf.AppendString(log)
-	buf.AppendByte('\n')
-	log = buf.String()
-	buf.Free()
+	log := msg(false, "DEBUG", format, args...)
 	LOGGER.logChan <- log
 }
 
 func Infof(format string, args ...interface{}) {
 	if LOGGER == nil {
-		stdoutf("INFO", format, args)
+		stdoutf("INFO", format, args...)
 		return
 	}
 	if LOGGER.logLevel > INFO {
 		return
 	}
-	log := fmt.Sprintf(format, args...)
-	// log = fmt.Sprintf("%s\tINFO\t%s\t%s\n", time.Now().Format(time.RFC3339), caller(2), log)
-	buf := bufferpool.Get()
-	buf.AppendString(time.Now().Format(time.RFC3339))
-	buf.AppendByte('\t')
-	buf.AppendString("INFO")
-	buf.AppendByte('\t')
-	buf.AppendString(caller(2))
-	buf.AppendByte('\t')
-	buf.AppendString(log)
-	buf.AppendByte('\n')
-	log = buf.String()
-	buf.Free()
+	log := msg(false, "INFO", format, args...)
 	LOGGER.logChan <- log
 }
 
 func Warnf(format string, args ...interface{}) {
 	if LOGGER == nil {
-		stdoutf("WARN", format, args)
+		stdoutf("WARN", format, args...)
 		return
 	}
 	if LOGGER.logLevel > WARN {
 		return
 	}
-	log := fmt.Sprintf(format, args...)
-	buf := bufferpool.Get()
-	buf.AppendString(time.Now().Format(time.RFC3339))
-	buf.AppendByte('\t')
-	buf.AppendString("WARN")
-	buf.AppendByte('\t')
-	buf.AppendString(caller(2))
-	buf.AppendByte('\t')
-	buf.AppendString(log)
-	buf.AppendByte('\n')
-	log = buf.String()
-	buf.Free()
+	log := msg(false, "WARN", format, args...)
 	LOGGER.logChan <- log
 }
 
 func Errorf(format string, args ...interface{}) {
 	if LOGGER == nil {
-		stdoutf("ERROR", format, args)
+		stdoutf("ERROR", format, args...)
 		return
 	}
 	if LOGGER.logLevel > ERROR {
 		return
 	}
-	log := fmt.Sprintf(format, args...)
-	buf := bufferpool.Get()
-	buf.AppendString(time.Now().Format(time.RFC3339))
-	buf.AppendByte('\t')
-	buf.AppendString("ERROR")
-	buf.AppendByte('\t')
-	buf.AppendString(caller(2))
-	buf.AppendByte('\t')
-	buf.AppendString(log)
-	buf.AppendByte('\n')
-	buf.AppendString(stackTrace())
-	log = buf.String()
-	buf.Free()
-	LOGGER.logChan <- log
+	LOGGER.logChan <- msg(true, "ERROR", format, args...)
 }
 
 func Panicf(format string, args ...interface{}) {
 	if LOGGER == nil {
-		stdoutf("PANIC", format, args)
+		stdoutf("PANIC", format, args...)
 		return
 	}
-	msg := fmt.Sprintf(format, args...)
+	m := fmt.Sprintf(format, args...)
 	if LOGGER.logLevel <= PANIC {
-		buf := bufferpool.Get()
-		buf.AppendString(time.Now().Format(time.RFC3339))
-		buf.AppendByte('\t')
-		buf.AppendString("PANIC")
-		buf.AppendByte('\t')
-		buf.AppendString(caller(2))
-		buf.AppendByte('\t')
-		buf.AppendString(msg)
-		buf.AppendByte('\n')
-		buf.AppendString(stackTrace())
-		log := buf.String()
-		buf.Free()
-		LOGGER.logChan <- log
+		LOGGER.logChan <- msg(true, "PANIC", m)
 	}
-	panic(errors.New(msg))
+	panic(errors.New(m))
 }
 
 func Fatalf(format string, args ...interface{}) {
 	if LOGGER == nil {
-		stdoutf("FATAL", format, args)
+		stdoutf("FATAL", format, args...)
 		return
 	}
 	if LOGGER.logLevel > FATAL {
 		return
 	}
+	LOGGER.logChan <- msg(true, "FATAL", format, args...)
+	Flush()
+	os.Exit(1)
+}
+
+func msg(trace bool, lvl, format string, args ...interface{}) string {
 	log := fmt.Sprintf(format, args...)
 	buf := bufferpool.Get()
 	buf.AppendString(time.Now().Format(time.RFC3339))
 	buf.AppendByte('\t')
-	buf.AppendString("FATAL")
+	buf.AppendString(lvl)
 	buf.AppendByte('\t')
-	buf.AppendString(caller(2))
+	buf.AppendString(caller(3))
 	buf.AppendByte('\t')
 	buf.AppendString(log)
 	buf.AppendByte('\n')
-	buf.AppendString(stackTrace())
+	if trace {
+		buf.AppendString(stackTrace())
+	}
 	log = buf.String()
 	buf.Free()
-	LOGGER.logChan <- log
-	Flush()
-	os.Exit(1)
+	return log
 }
