@@ -277,7 +277,6 @@ func (l *logger) refreshLastTime() {
 	max = strings.TrimSuffix(max, l.logFile)
 	split := strings.Split(max, ".")
 	if len(split) < 3 {
-		keylog("invalid compress log file name %s", max)
 		l.lastTime = time.Now()
 		l.lastSeq = 0
 		return

@@ -26,6 +26,13 @@ func keylog(format string, msg ...interface{}) {
 		pName, _ = os.Executable()
 		pName = filepath.Base(pName)
 	}
-	file.WriteString(fmt.Sprintf("%s\t[%d]%s\t%s\t%s\n", time.Now().Format(time.RFC3339), pid, pName, caller(2), fmt.Sprintf(format, msg...)))
-	file.Sync()
+	_, err = file.WriteString(fmt.Sprintf("%s\t[%d]%s\t%s\t%s\n", time.Now().Format(time.RFC3339), pid, pName, caller(2), fmt.Sprintf(format, msg...)))
+	if err != nil {
+		if file != nil {
+			file.Close()
+			file = nil
+		}
+	} else {
+		file.Sync()
+	}
 }
