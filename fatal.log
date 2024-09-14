@@ -1,8 +1,0 @@
-2024-09-14T10:47:23+08:00	[87415]___go_build_github_com_aobco_xlog_example	xlog/logger.go:38	init log demo/xxx.log
-2024-09-14T10:47:23+08:00	[87415]___go_build_github_com_aobco_xlog_example	xlog/logger.go:280	invalid compress log file name 
-2024-09-14T10:48:32+08:00	[87586]___1go_build_github_com_aobco_xlog_example	xlog/logger.go:38	init log demo/xxx.log
-2024-09-14T10:48:32+08:00	[87586]___1go_build_github_com_aobco_xlog_example	xlog/logger.go:280	latest log 
-2024-09-14T10:49:23+08:00	[87706]___1go_build_github_com_aobco_xlog_example	xlog/logger.go:38	init log demo/xxx.log
-2024-09-14T10:49:30+08:00	[87743]___1go_build_github_com_aobco_xlog_example	xlog/logger.go:38	init log demo/xxx.log
-2024-09-14T10:49:33+08:00	[87770]___1go_build_github_com_aobco_xlog_example	xlog/logger.go:38	init log demo/xxx.log
-2024-09-14T10:49:36+08:00	[87816]___1go_build_github_com_aobco_xlog_example	xlog/logger.go:38	init log demo/xxx.log
