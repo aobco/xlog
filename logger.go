@@ -298,7 +298,7 @@ func (l *logger) refreshLastTime() {
 }
 
 func stdoutf(lvl string, format string, args ...interface{}) {
-	fmt.Printf("%s\t%s\t%s\t%s\n", time.Now().Format(time.RFC3339), lvl, caller(3), fmt.Sprintf(format, args))
+	fmt.Printf("%s\t%s\t%s\t%s\n", time.Now().Format(time.RFC3339), lvl, caller(3), fmt.Sprintf(format, args...))
 }
 
 func Tracef(format string, args ...interface{}) {
