@@ -72,7 +72,7 @@ func (l *logger) sink() {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						keylog("%v", err)
+						keylog("%v", r)
 						l.reload()
 					}
 				}()
