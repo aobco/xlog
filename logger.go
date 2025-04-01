@@ -32,6 +32,7 @@ type logger struct {
 	lastSeq  int
 	lastSize int64
 	once     sync.Once
+	stdout   bool
 }
 
 func Init(logFile string) *logger {
@@ -76,7 +77,9 @@ func (l *logger) sink() {
 						l.reload()
 					}
 				}()
-				fmt.Print(msg)
+				if l.stdout {
+					fmt.Print(msg)
+				}
 				n, err := l.writer.WriteString(msg)
 				if err != nil {
 					keylog("write log %v", err)
@@ -123,8 +126,14 @@ func (l *logger) Monthly() *logger {
 	l.duration = Monthly
 	return l
 }
+
 func (l *logger) Yearly() *logger {
 	l.duration = Yearly
+	return l
+}
+
+func (l *logger) Stdout() *logger {
+	l.stdout = true
 	return l
 }
 
