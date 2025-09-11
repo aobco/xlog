@@ -319,7 +319,10 @@ func Tracef(format string, args ...interface{}) {
 		return
 	}
 	log := msg(false, "TRACE", format, args...)
-	LOGGER.logChan <- log
+	select {
+	case LOGGER.logChan <- log:
+	default:
+	}
 }
 
 func Debugf(format string, args ...interface{}) {
