@@ -13,8 +13,8 @@ func main() {
 		Level(xlog.TRACE).
 		Hourly().
 		Size(1, xlog.MB).
-		Rotate(4).
-		Compress(true)
+		Rotate(4).Skip(3).
+		Compress(true).Stdout()
 	defer xlog.Flush()
 	var wg sync.WaitGroup
 	wg.Add(3)

@@ -33,6 +33,7 @@ type logger struct {
 	lastSize int64
 	once     sync.Once
 	stdout   bool
+	skip     int
 }
 
 func Init(logFile string) *logger {
@@ -46,6 +47,7 @@ func Init(logFile string) *logger {
 		rotateNo: 100,
 		logChan:  make(chan string, 10240),
 		done:     make(chan interface{}),
+		skip:     3,
 	}
 	go LOGGER.sink()
 	atExit(LOGGER)
@@ -134,6 +136,13 @@ func (l *logger) Yearly() *logger {
 
 func (l *logger) Stdout() *logger {
 	l.stdout = true
+	return l
+}
+func (l *logger) Skip(skip int) *logger {
+	if l == nil {
+		return l
+	}
+	l.skip = skip
 	return l
 }
 
@@ -307,7 +316,7 @@ func (l *logger) refreshLastTime() {
 }
 
 func stdoutf(lvl string, format string, args ...interface{}) {
-	fmt.Printf("%s\t%s\t%s\t%s\n", time.Now().Format(time.RFC3339), lvl, caller(3), fmt.Sprintf(format, args...))
+	fmt.Printf("%s\t%s\t%s\t%s\n", time.Now().Format(time.RFC3339), lvl, caller(LOGGER.skip), fmt.Sprintf(format, args...))
 }
 
 func Tracef(format string, args ...interface{}) {
@@ -404,7 +413,7 @@ func msg(trace bool, lvl, format string, args ...interface{}) string {
 	buf.AppendByte('\t')
 	buf.AppendString(lvl)
 	buf.AppendByte('\t')
-	buf.AppendString(caller(3))
+	buf.AppendString(caller(LOGGER.skip))
 	buf.AppendByte('\t')
 	buf.AppendString(log)
 	buf.AppendByte('\n')
