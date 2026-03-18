@@ -16,6 +16,12 @@ import (
 )
 
 var LOGGER *logger
+var stdoutLevel LoggerLevel = INFO
+
+// SetStdoutLevel 设置未 Init 时 stdout 日志打印级别
+func SetStdoutLevel(lvl LoggerLevel) {
+	stdoutLevel = lvl
+}
 
 type logger struct {
 	logFile  string
@@ -325,6 +331,9 @@ func stdoutf(lvl string, format string, args ...interface{}) {
 
 func Tracef(format string, args ...interface{}) {
 	if LOGGER == nil {
+		if stdoutLevel > TRACE {
+			return
+		}
 		stdoutf("TRACE", format, args...)
 		return
 	}
@@ -340,6 +349,9 @@ func Tracef(format string, args ...interface{}) {
 
 func Debugf(format string, args ...interface{}) {
 	if LOGGER == nil {
+		if stdoutLevel > DEBUG {
+			return
+		}
 		stdoutf("DEBUG", format, args...)
 		return
 	}
@@ -352,6 +364,9 @@ func Debugf(format string, args ...interface{}) {
 
 func Infof(format string, args ...interface{}) {
 	if LOGGER == nil {
+		if stdoutLevel > INFO {
+			return
+		}
 		stdoutf("INFO", format, args...)
 		return
 	}
@@ -364,6 +379,9 @@ func Infof(format string, args ...interface{}) {
 
 func Warnf(format string, args ...interface{}) {
 	if LOGGER == nil {
+		if stdoutLevel > WARN {
+			return
+		}
 		stdoutf("WARN", format, args...)
 		return
 	}
@@ -376,6 +394,9 @@ func Warnf(format string, args ...interface{}) {
 
 func Errorf(format string, args ...interface{}) {
 	if LOGGER == nil {
+		if stdoutLevel > ERROR {
+			return
+		}
 		stdoutf("ERROR", format, args...)
 		return
 	}
@@ -387,8 +408,10 @@ func Errorf(format string, args ...interface{}) {
 
 func Panicf(format string, args ...interface{}) {
 	if LOGGER == nil {
-		stdoutf("PANIC", format, args...)
-		return
+		if stdoutLevel <= PANIC {
+			stdoutf("PANIC", format, args...)
+		}
+		panic(errors.New(fmt.Sprintf(format, args...)))
 	}
 	m := fmt.Sprintf(format, args...)
 	if LOGGER.logLevel <= PANIC {
@@ -399,8 +422,10 @@ func Panicf(format string, args ...interface{}) {
 
 func Fatalf(format string, args ...interface{}) {
 	if LOGGER == nil {
-		stdoutf("FATAL", format, args...)
-		return
+		if stdoutLevel <= FATAL {
+			stdoutf("FATAL", format, args...)
+		}
+		os.Exit(1)
 	}
 	if LOGGER.logLevel > FATAL {
 		return
