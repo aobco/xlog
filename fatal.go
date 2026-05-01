@@ -4,18 +4,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
 const filePath = "fatal.log"
 
 var (
-	file  *os.File
-	pid   int
-	pName string
+	file     *os.File
+	pid      int
+	pName    string
+	keylogMu sync.Mutex
 )
 
 func keylog(format string, msg ...interface{}) {
+	keylogMu.Lock()
+	defer keylogMu.Unlock()
 	var err error
 	if file == nil {
 		file, err = os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

@@ -12,10 +12,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 var LOGGER *logger
+var globalLogger atomic.Value
+var globalLoggerMu sync.Mutex
 var stdoutLevel LoggerLevel = INFO
 
 // SetStdoutLevel 设置未 Init 时 stdout 日志打印级别
@@ -23,8 +26,7 @@ func SetStdoutLevel(lvl LoggerLevel) {
 	stdoutLevel = lvl
 }
 
-type logger struct {
-	logFile         string
+type loggerConfig struct {
 	logLevel        LoggerLevel
 	duration        string
 	size            int64
@@ -33,34 +35,72 @@ type logger struct {
 	maxArchiveSize  int64
 	maxArchiveDays  int
 	compress        bool
-	logChan         chan string
-	done            chan interface{}
-	fd              *os.File
-	writer          *bufio.Writer
-	lastTime        time.Time
-	lastSeq         int
-	lastSize        int64
-	once            sync.Once
 	stdout          bool
 	skip            int
 }
 
+type logger struct {
+	logFile     string
+	config      atomic.Value
+	configMu    sync.Mutex
+	lifecycleMu sync.RWMutex
+	closed      bool
+	logChan     chan string
+	done        chan interface{}
+	fd          *os.File
+	writer      *bufio.Writer
+	lastTime    time.Time
+	lastSeq     int
+	lastSize    int64
+	once        sync.Once
+}
+
 func Init(logFile string) *logger {
 	keylog("init log %s", logFile)
-	if LOGGER != nil {
+	globalLoggerMu.Lock()
+	defer globalLoggerMu.Unlock()
+	if logger := getLogger(); logger != nil {
 		keylog("duplicate log init, skip...")
-		return LOGGER
+		return logger
 	}
-	LOGGER = &logger{
-		logFile:  logFile,
-		rotateNo: 100,
-		logChan:  make(chan string, 10240),
-		done:     make(chan interface{}),
-		skip:     3,
+	logger := &logger{
+		logFile: logFile,
+		logChan: make(chan string, 10240),
+		done:    make(chan interface{}),
 	}
-	go LOGGER.sink()
-	atExit(LOGGER)
-	return LOGGER
+	logger.config.Store(defaultLoggerConfig())
+	setLogger(logger)
+	go logger.sink()
+	atExit(logger)
+	return logger
+}
+
+func getLogger() *logger {
+	if logger, ok := globalLogger.Load().(*logger); ok {
+		return logger
+	}
+	return nil
+}
+
+func setLogger(logger *logger) {
+	LOGGER = logger
+	globalLogger.Store(logger)
+}
+
+func (l *logger) enqueue(msg string, dropIfFull bool) {
+	l.lifecycleMu.RLock()
+	defer l.lifecycleMu.RUnlock()
+	if l.closed {
+		return
+	}
+	if dropIfFull {
+		select {
+		case l.logChan <- msg:
+		default:
+		}
+		return
+	}
+	l.logChan <- msg
 }
 
 func (l *logger) sink() {
@@ -79,7 +119,7 @@ func (l *logger) sink() {
 		case msg, ok := <-l.logChan:
 			if !ok {
 				l.done <- struct{}{}
-				break
+				return
 			}
 			func() {
 				defer func() {
@@ -88,7 +128,7 @@ func (l *logger) sink() {
 						l.reload()
 					}
 				}()
-				if l.stdout {
+				if l.getConfig().stdout {
 					fmt.Print(msg)
 				}
 				n, err := l.writer.WriteString(msg)
@@ -113,51 +153,87 @@ func (l *logger) sink() {
 	}
 }
 
-func (l *logger) Level(lvl LoggerLevel) *logger {
-	l.logLevel = lvl
-	return l
+func defaultLoggerConfig() *loggerConfig {
+	return &loggerConfig{
+		rotateNo: 100,
+		skip:     3,
+	}
 }
 
-func (l *logger) Minutely() *logger {
-	l.duration = Minutely
-	return l
+func (l *logger) getConfig() *loggerConfig {
+	if l == nil {
+		return defaultLoggerConfig()
+	}
+	if cfg, ok := l.config.Load().(*loggerConfig); ok && cfg != nil {
+		return cfg
+	}
+	return defaultLoggerConfig()
 }
 
-func (l *logger) Hourly() *logger {
-	l.duration = Hourly
-	return l
-}
-
-func (l *logger) Daily() *logger {
-	l.duration = Daily
-	return l
-}
-
-func (l *logger) Monthly() *logger {
-	l.duration = Monthly
-	return l
-}
-
-func (l *logger) Yearly() *logger {
-	l.duration = Yearly
-	return l
-}
-
-func (l *logger) Stdout() *logger {
-	l.stdout = true
-	return l
-}
-func (l *logger) Skip(skip int) *logger {
+func (l *logger) updateConfig(update func(*loggerConfig)) *logger {
 	if l == nil {
 		return l
 	}
-	l.skip = skip
+	l.configMu.Lock()
+	defer l.configMu.Unlock()
+	old := l.getConfig()
+	next := *old
+	update(&next)
+	l.config.Store(&next)
 	return l
 }
 
+func (l *logger) Level(lvl LoggerLevel) *logger {
+	return l.updateConfig(func(cfg *loggerConfig) {
+		cfg.logLevel = lvl
+	})
+}
+
+func (l *logger) Minutely() *logger {
+	return l.updateConfig(func(cfg *loggerConfig) {
+		cfg.duration = Minutely
+	})
+}
+
+func (l *logger) Hourly() *logger {
+	return l.updateConfig(func(cfg *loggerConfig) {
+		cfg.duration = Hourly
+	})
+}
+
+func (l *logger) Daily() *logger {
+	return l.updateConfig(func(cfg *loggerConfig) {
+		cfg.duration = Daily
+	})
+}
+
+func (l *logger) Monthly() *logger {
+	return l.updateConfig(func(cfg *loggerConfig) {
+		cfg.duration = Monthly
+	})
+}
+
+func (l *logger) Yearly() *logger {
+	return l.updateConfig(func(cfg *loggerConfig) {
+		cfg.duration = Yearly
+	})
+}
+
+func (l *logger) Stdout() *logger {
+	return l.updateConfig(func(cfg *loggerConfig) {
+		cfg.stdout = true
+	})
+}
+func (l *logger) Skip(skip int) *logger {
+	return l.updateConfig(func(cfg *loggerConfig) {
+		cfg.skip = skip
+	})
+}
+
 func (l *logger) Size(size int64, unit SizeUnit) *logger {
-	l.size = size * int64(unit)
-	return l
+	return l.updateConfig(func(cfg *loggerConfig) {
+		cfg.size = size * int64(unit)
+	})
 }
 
 func (l *logger) Rotate(rotate int) *logger {
@@ -167,32 +243,42 @@ func (l *logger) Rotate(rotate int) *logger {
 	if rotate > 100 {
 		rotate = 100
 	}
-	l.rotateNo = rotate
-	return l
+	return l.updateConfig(func(cfg *loggerConfig) {
+		cfg.rotateNo = rotate
+	})
 }
 
 func (l *logger) RotateBy(maxTotalSize int64, unit SizeUnit, maxDays int) *logger {
-	l.rotateByEnabled = true
-	if maxTotalSize > 0 {
-		l.maxArchiveSize = maxTotalSize * int64(unit)
-	}
-	l.maxArchiveDays = maxDays
-	return l
+	return l.updateConfig(func(cfg *loggerConfig) {
+		cfg.rotateByEnabled = true
+		if maxTotalSize > 0 {
+			cfg.maxArchiveSize = maxTotalSize * int64(unit)
+		}
+		cfg.maxArchiveDays = maxDays
+	})
 }
 
 func (l *logger) Compress(compress bool) *logger {
-	l.compress = compress
-	return l
+	return l.updateConfig(func(cfg *loggerConfig) {
+		cfg.compress = compress
+	})
 }
 
 func Flush() {
-	if LOGGER == nil {
+	globalLoggerMu.Lock()
+	defer globalLoggerMu.Unlock()
+	logger := getLogger()
+	if logger == nil {
 		return
 	}
-	LOGGER.once.Do(func() {
-		close(LOGGER.logChan)
-		<-LOGGER.done
-		LOGGER.closeFile()
+	logger.once.Do(func() {
+		logger.lifecycleMu.Lock()
+		logger.closed = true
+		close(logger.logChan)
+		logger.lifecycleMu.Unlock()
+		<-logger.done
+		logger.closeFile()
+		setLogger(nil)
 	})
 }
 
@@ -219,12 +305,13 @@ func (l *logger) checkFile() bool {
 		l.reload()
 		l.refreshLastTime()
 	}
-	if len(l.duration) > 0 && time.Now().Format(l.duration) != l.lastTime.Format(l.duration) {
+	cfg := l.getConfig()
+	if len(cfg.duration) > 0 && time.Now().Format(cfg.duration) != l.lastTime.Format(cfg.duration) {
 		l.rotate(time.Now(), 0)
 		return true
 	}
-	if l.size > 0 {
-		if l.lastSize > l.size {
+	if cfg.size > 0 {
+		if l.lastSize > cfg.size {
 			l.rotate(time.Now(), l.lastSeq+1)
 			return true
 		}
@@ -249,9 +336,9 @@ func (l *logger) rotate(dt time.Time, seq int) {
 	tmpLog := fmt.Sprintf("%s.%s.%02d", l.logFile, dt.Format(Minutely), seq)
 	var err error
 	for i := 0; i < 5; i++ {
-		time.Sleep(time.Second)
 		if err = os.Rename(l.logFile, tmpLog); err != nil {
 			keylog("%v", err)
+			time.Sleep(time.Second)
 			continue
 		}
 		break
@@ -260,10 +347,10 @@ func (l *logger) rotate(dt time.Time, seq int) {
 		return
 	}
 	for i := 0; i < 5; i++ {
-		time.Sleep(time.Second)
 		stat, err := os.Stat(tmpLog)
 		if err != nil {
 			keylog("%v", err)
+			time.Sleep(time.Second)
 			continue
 		}
 		if stat != nil {
@@ -275,8 +362,9 @@ func (l *logger) rotate(dt time.Time, seq int) {
 	l.lastTime = dt
 	l.lastSeq = seq
 	l.lastSize = 0
+	compress := l.getConfig().compress
 	go func() {
-		if l.compress {
+		if compress {
 			file, err := os.Create(fmt.Sprintf("%s.%s.%02d.gz", l.logFile, dt.Format(Minutely), seq))
 			if err != nil {
 				keylog("%v", err)
@@ -335,126 +423,145 @@ func (l *logger) refreshLastTime() {
 
 func stdoutf(lvl string, format string, args ...interface{}) {
 	skip := 3
-	if LOGGER != nil {
-		skip = LOGGER.skip
+	if logger := getLogger(); logger != nil {
+		skip = logger.getConfig().skip
 	}
 	fmt.Printf("%s\t%s\t%s\t%s\n", time.Now().Format(time.RFC3339), lvl, caller(skip), fmt.Sprintf(format, args...))
 }
 
 func Tracef(format string, args ...interface{}) {
-	if LOGGER == nil {
+	logger := getLogger()
+	if logger == nil {
 		if stdoutLevel > TRACE {
 			return
 		}
 		stdoutf("TRACE", format, args...)
 		return
 	}
-	if LOGGER.logLevel > TRACE {
+	cfg := logger.getConfig()
+	if cfg.logLevel > TRACE {
 		return
 	}
-	log := msg(false, "TRACE", format, args...)
-	select {
-	case LOGGER.logChan <- log:
-	default:
-	}
+	log := msgWithSkip(false, "TRACE", cfg.skip, format, args...)
+	logger.enqueue(log, true)
 }
 
 func Debugf(format string, args ...interface{}) {
-	if LOGGER == nil {
+	logger := getLogger()
+	if logger == nil {
 		if stdoutLevel > DEBUG {
 			return
 		}
 		stdoutf("DEBUG", format, args...)
 		return
 	}
-	if LOGGER.logLevel > DEBUG {
+	cfg := logger.getConfig()
+	if cfg.logLevel > DEBUG {
 		return
 	}
-	log := msg(false, "DEBUG", format, args...)
-	LOGGER.logChan <- log
+	log := msgWithSkip(false, "DEBUG", cfg.skip, format, args...)
+	logger.enqueue(log, false)
 }
 
 func Infof(format string, args ...interface{}) {
-	if LOGGER == nil {
+	logger := getLogger()
+	if logger == nil {
 		if stdoutLevel > INFO {
 			return
 		}
 		stdoutf("INFO", format, args...)
 		return
 	}
-	if LOGGER.logLevel > INFO {
+	cfg := logger.getConfig()
+	if cfg.logLevel > INFO {
 		return
 	}
-	log := msg(false, "INFO", format, args...)
-	LOGGER.logChan <- log
+	log := msgWithSkip(false, "INFO", cfg.skip, format, args...)
+	logger.enqueue(log, false)
 }
 
 func Warnf(format string, args ...interface{}) {
-	if LOGGER == nil {
+	logger := getLogger()
+	if logger == nil {
 		if stdoutLevel > WARN {
 			return
 		}
 		stdoutf("WARN", format, args...)
 		return
 	}
-	if LOGGER.logLevel > WARN {
+	cfg := logger.getConfig()
+	if cfg.logLevel > WARN {
 		return
 	}
-	log := msg(false, "WARN", format, args...)
-	LOGGER.logChan <- log
+	log := msgWithSkip(false, "WARN", cfg.skip, format, args...)
+	logger.enqueue(log, false)
 }
 
 func Errorf(format string, args ...interface{}) {
-	if LOGGER == nil {
+	logger := getLogger()
+	if logger == nil {
 		if stdoutLevel > ERROR {
 			return
 		}
 		stdoutf("ERROR", format, args...)
 		return
 	}
-	if LOGGER.logLevel > ERROR {
+	cfg := logger.getConfig()
+	if cfg.logLevel > ERROR {
 		return
 	}
-	LOGGER.logChan <- msg(true, "ERROR", format, args...)
+	logger.enqueue(msgWithSkip(true, "ERROR", cfg.skip, format, args...), false)
 }
 
 func Panicf(format string, args ...interface{}) {
-	if LOGGER == nil {
+	logger := getLogger()
+	if logger == nil {
 		if stdoutLevel <= PANIC {
 			stdoutf("PANIC", format, args...)
 		}
 		panic(errors.New(fmt.Sprintf(format, args...)))
 	}
 	m := fmt.Sprintf(format, args...)
-	if LOGGER.logLevel <= PANIC {
-		LOGGER.logChan <- msg(true, "PANIC", m)
+	cfg := logger.getConfig()
+	if cfg.logLevel <= PANIC {
+		logger.enqueue(msgWithSkip(true, "PANIC", cfg.skip, m), false)
 	}
 	panic(errors.New(m))
 }
 
 func Fatalf(format string, args ...interface{}) {
-	if LOGGER == nil {
+	logger := getLogger()
+	if logger == nil {
 		if stdoutLevel <= FATAL {
 			stdoutf("FATAL", format, args...)
 		}
 		os.Exit(1)
 	}
-	if LOGGER.logLevel > FATAL {
+	cfg := logger.getConfig()
+	if cfg.logLevel > FATAL {
 		return
 	}
-	LOGGER.logChan <- msg(true, "FATAL", format, args...)
+	logger.enqueue(msgWithSkip(true, "FATAL", cfg.skip, format, args...), false)
 	Flush()
 	os.Exit(1)
 }
 
 func msg(trace bool, lvl, format string, args ...interface{}) string {
+	skip := 3
+	if logger := getLogger(); logger != nil {
+		skip = logger.getConfig().skip
+	}
+	return msgWithSkip(trace, lvl, skip, format, args...)
+}
+
+func msgWithSkip(trace bool, lvl string, skip int, format string, args ...interface{}) string {
 	log := fmt.Sprintf(format, args...)
 	buf := bufferpool.Get()
 	buf.AppendString(time.Now().Format(time.RFC3339))
 	buf.AppendByte('\t')
 	buf.AppendString(lvl)
 	buf.AppendByte('\t')
-	buf.AppendString(caller(LOGGER.skip))
+	buf.AppendString(caller(skip))
 	buf.AppendByte('\t')
 	buf.AppendString(log)
 	buf.AppendByte('\n')
