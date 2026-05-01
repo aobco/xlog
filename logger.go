@@ -24,22 +24,25 @@ func SetStdoutLevel(lvl LoggerLevel) {
 }
 
 type logger struct {
-	logFile  string
-	logLevel LoggerLevel
-	duration string
-	size     int64
-	rotateNo int
-	compress bool
-	logChan  chan string
-	done     chan interface{}
-	fd       *os.File
-	writer   *bufio.Writer
-	lastTime time.Time
-	lastSeq  int
-	lastSize int64
-	once     sync.Once
-	stdout   bool
-	skip     int
+	logFile         string
+	logLevel        LoggerLevel
+	duration        string
+	size            int64
+	rotateNo        int
+	rotateByEnabled bool
+	maxArchiveSize  int64
+	maxArchiveDays  int
+	compress        bool
+	logChan         chan string
+	done            chan interface{}
+	fd              *os.File
+	writer          *bufio.Writer
+	lastTime        time.Time
+	lastSeq         int
+	lastSize        int64
+	once            sync.Once
+	stdout          bool
+	skip            int
 }
 
 func Init(logFile string) *logger {
@@ -165,6 +168,15 @@ func (l *logger) Rotate(rotate int) *logger {
 		rotate = 100
 	}
 	l.rotateNo = rotate
+	return l
+}
+
+func (l *logger) RotateBy(maxTotalSize int64, unit SizeUnit, maxDays int) *logger {
+	l.rotateByEnabled = true
+	if maxTotalSize > 0 {
+		l.maxArchiveSize = maxTotalSize * int64(unit)
+	}
+	l.maxArchiveDays = maxDays
 	return l
 }
 
